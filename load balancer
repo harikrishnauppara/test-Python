@@ -1,0 +1,797 @@
+What template should I use?
+The Continuous Delivery team provides two templates you can use to achieve best practices:
+	•	Best practice pipeline template with database migration
+	◦	Example pipeline config
+	•	Best practice pipeline template without database migration
+	◦	Example pipeline config
+The example pipeline config for both of those templates is a working pipeline configuration. It will deploy a dummyapp to internal staging and production. On Spinnaker, this pipeline can be found here.
+A list of all the Continuous Delivery supported templates, their description, as well as their version changes can be found on the main page of protected-spinnaker-templates repository.
+Sourcing Templates
+In order to use a template in your pipeline configuration the template must be sourced. Sourcing a template can be achieved by setting the pipeline.template.source property in the pipeline configuration as follows:
+schema: "1"
+pipeline:
+  application: "yourapp"
+  name: "Deploy myapp"
+  template:
+    source: spinnaker://CD-pipeline-1-bestPracticePipeline-v9
+...
+The a list of templates and their latest version can be found on the protected-spinnaker-templates repository.
+Template Variables
+Templates contain variables that need to be defined in the pipeline configuration. Currently the two ways to expose these variables are either:
+	•	Look at the source code
+	•	Use the Spinnaker UI to reveal them by clicking on the create pipeline, and then selecting a template from the dropdown as per the screenshot below:
+Variables without a default value must be defined in the pipeline configuration file.
+Common variables found in pipeline templates supported by the Continuous Delivery team are described in the table bellow:
+Variable name
+Type
+Default value
+Description
+Example
+product
+string
+ 
+The product tag will be assigned to instances
+cd
+service
+string
+ 
+The service tag will be assigned to instances
+myapp
+jenkinsTrigger
+string
+ 
+The Jenkins job on ci-corp that will trigger the pipeline
+myapp-job
+forceRebake
+boolean
+false
+Sets the force rebake flag at the bake stage
+true
+gitRepository
+string
+ 
+The git repository that run-declarative-infrastructure job will clone from
+myapp-repo
+gitProject
+string
+ 
+The git organization that run-declarative-infrastructure job will clone from
+continuous-delivery
+stagingDesiredInstanceCount
+integer
+1
+The staging desired amount of instance for the server group. Similar variables follow (staging/production)(Min/Max/Desired)InstanceCountnaming convention.
+1
+detail
+string
+ 
+The CLOUD_DETAIL of your application
+mydetail
+stackStaging, stackProduction
+string
+staging, prod
+The CLOUD_STACK of your application for Staging/Production environment
+prod
+subnetTypeStaging, subnetTypeProduction
+string
+ 
+The the subnet for Staging/Production environment, refer to this list for all of them
+prod
+stagingIamRole, productionIamRole
+string
+ 
+The name of the IAM role for your server group, in staging/production
+myapp-role
+keyPairStaging, keyPairProduction
+string
+continuous-delivery
+The name of the public part of the keypair uploaded to the AWS account, for staging/production
+my-key-pair
+stagingLoadBalancers, productionLoadBalancers
+list
+None
+A list of load balancers to which your instances attach, for staging/production
+- myapp-staging-lb 
+- myapp-staging-lb
+stagingSecurityGroups, productionSecurityGroups
+list
+None
+A list of security groups names to apply to your instances, for staging/production
+- myapp-staging-sg 
+- myapp-staging-sg
+jenkinsTestJob
+string
+ 
+The Jenkins job that will perform tests on staging environment before going to production.
+always-succeed
+jenkinsTestMaster
+string
+ci-staging
+The Jenkins on which the test job resides
+ci-staging
+customJenkinsTestJobParameters
+map
+None
+The parameters that are passed to the test job
+- name: tagName 
+value: tagValue 
+- name: small 
+value: tangerine
+The table above is not exhaustive. Please either look at the source code of the template or view the variables through the UI as suggested at the start of this section.
+Example pipeline configuration
+Here is a very simplified example showing how your pipeline configuration would look like:
+schema: "1"
+pipeline:
+  application: "yourapp"
+  name: "Deploy myapp"
+  template:
+    source: spinnaker://WRITE-DOWN-ID-HERE
+  variables:
+    account: production
+    product: cd
+    service: ecs
+    securityGroups:
+    - myapp-staging-server
+configuration:
+  inherit: ['concurrentExecutions', 'triggers', 'parameters']
+  triggers: []
+  parameters: []
+  notifications: []
+  description: ""
+stages: []
+modules: []
+partials: []
+infrastructure:
+  ... (See infrastructure documentation for implementation details)
+A working example of pipeline configuration can be found here.
+Stage injection
+Sometimes, you need to have just a few modifications to the best practice pipeline. You can use stage injections at the pipeline configuration level to insert a stage before, between, or after stages.
+The following stages node is at the bottom level of your pipeline configuration:
+stages:
+- id: "Roll over cluster instances in Prod"
+  type: jenkins
+  inject:
+    after:
+    - deployToProduction
+  config:
+    continuePipeline: false
+    failPipeline: true
+    job: ecs-cluster-instance-drain-and-terminate
+    master: ci-corp
+    parameters:
+      newestServerGroupPrefixToPreserve: ecs-production-general
+      account: production
+In the above example, deployToProduction is a stage ID.
+Variable name
+Description
+id
+This is both the name and the ID of the stage. You may refer to this stage by this ID
+type
+You may specify any valid pipeline stage here. Typical values are jenkins, deploy, manualJudgment
+inject
+You may specify one of the two: before, after. You must then pass it a list of stage IDs, as per the example
+config
+There is 1:1 matching between this node and the actual JSON of a pipeline. Build this node manually, or use the Jenkins pipeline exporting job to export an existing stage with the properties you wish for it.
+A working example of stage injection can be found here.
+Pipeline exporting
+If you follow the the best practices pipeline, this section can be skipped.
+You may use the spinnaker-extract-pipeline-as-declarative-template to extract a pipeline into a pipeline template. The config node of a given stage can be copy/pasted onto an injected stage’s config node as is, without modifications.
+You may also use that new pipeline template as your own template. In this case, you will need to put the template in the pipeline-template directory at the root of your git project and follow the Jenkins integration instructions.
+
+# This file typically resides in the a folder such as "declarative-pipeline" or "pipeline-config" at
+
+# the root of the project's directory.
+
+# The file MUST contain "pipeline-config" in it's name in order to be picked up by run-declarative-infrastructure.
+
+# Using this pipeline will create a pipeline over at https://spinnaker.prod.lkt.is/#/applications/example1/executions
+
+# that's called "Example 1 Pipeline".
+
+
+
+schema: "1"
+
+##################################################################
+
+# Pipeline Setup
+
+##################################################################
+
+pipeline:
+
+  # This is the name of your application. It should also be the name of your Spinnaker application.
+
+  application: "example1"
+
+  # This is the name of the pipeline itself.
+
+  name: "Example 1 Pipeline - With DB"
+
+
+
+  template:
+
+    # Template that will be used, variables are found inside of it: https://source.corp.lookout.com/continuous-delivery/protected-spinnaker-templates/blob/master/pipeline-template/CD-pipeline-1-bestPracticePipelineNoDBMigration.yaml
+
+    # Latest version, and version changes can be found over at: https://source.corp.lookout.com/continuous-delivery/protected-spinnaker-templates#cd-pipeline-1-bestpracticepipelinenodbmigration
+
+    source: spinnaker://CD-pipeline-1-bestPracticePipeline-v10
+
+
+
+  # Variables found in the template that do no have default values must be declared.
+
+  # Not all variables are shown in this example, see the template itself.
+
+  variables:
+
+    # Used for tags
+
+    product: cd
+
+    service: examples
+
+
+
+    # Jenkins job that triggers the pipeline. Typically the one that builds the artifact.
+
+    jenkinsTrigger: "Dummy app"
+
+    # The Debian package of the app that will be baked. Can use Spinnaker expressions such as  `${trigger.properties['debian_version']}`
+
+    debianPackageName: dummy
+
+
+
+    # These are used as parameters for the "run-declarative-infrastructure" Jenkins job
+
+    # They should be pointing to your app's repo, and directory should be root (".") - unless otherwise
+
+    gitRepository: protected-spinnaker-templates
+
+    gitProject: continuous-delivery
+
+    # This is the parent directory of your "declarative-pipeline" or "pipeline-config" folder
+
+    # Should typically be "." (which is the default value)
+
+    gitDirectory: examples/pipeline-config/cd-pipeline-1
+
+
+
+    # TODO: This is the placeholder for automated tests. jenkinsTestMaster default is ci-stage
+
+    jenkinsTestMaster: ci-corp
+
+    jenkinsTestJob: always-succeed
+
+
+
+    # The CLOUD_DETAIL used on staging/prod the pipeline.
+
+    detailStaging: liatedGnigats
+
+    detailProduction: liatedNoitcudorp
+
+    detailDBStaging: detailDBstage
+
+    detailDBProduction: detailDBprod
+
+
+
+    # This part configures staging instances
+
+    # Security group names should match the names that will be generated in the Infrastructure Setup part
+
+    stagingSecurityGroups:
+
+    - example1-staging-lb
+
+    - example1-staging-sg
+
+    # Load balancer names should match the names that will be generated in the Infrastructure Setup part
+
+    stagingLoadBalancers:
+
+    - example1-staging-lb
+
+    stagingIamRole: example-app-staging
+
+    # TODO: Change to your own key pair
+
+    keyPairStaging: continuous-delivery
+
+    # Default value for desired/max/min are 1
+
+    # Declaring them with 1's is just for an example
+
+    stagingDesiredInstanceCount: 1
+
+    stagingMaxInstanceCount: 1
+
+    stagingMinInstanceCount: 1
+
+    subnetTypeStaging: secondary_vpc
+
+    # Custom tags can be anything - Instances will always have product and service tags, even when custom tags are not set.
+
+    customInstanceTagsStaging:
+
+      - name: env
+
+        value: stage_env
+
+
+
+    # This part configures production instances
+
+    # Security group names should match the names that will be generated in the Infrastructure Setup part
+
+    productionSecurityGroups:
+
+    - example1-production-lb
+
+    - example1-production-sg
+
+    # Load balancer names should match the names that will be generated in the Infrastructure Setup part
+
+    productionLoadBalancers:
+
+    - example1-production-lb
+
+    productionIamRole: example-app-prod
+
+    # TODO: Change to your own key pair
+
+    keyPairProduction: continuous-delivery
+
+    # Default value for desired/max/min are 1
+
+    # Declaring them with 1's is just for an example
+
+    productionDesiredInstanceCount: 1
+
+    productionMaxInstanceCount: 1
+
+    productionMinInstanceCount: 1
+
+    subnetTypeProduction: production
+
+    # Custom tags can be anything - Instances will always have product and service tags, even when custom tags are not set.
+
+    customInstanceTagsProd:
+
+      - name: env
+
+        value: prod_env
+
+
+
+# This is needed, but can be ignored.
+
+configuration:
+
+  inherit: ['concurrentExecutions', 'triggers', 'parameters']
+
+  triggers: []
+
+  parameters: []
+
+  notifications: []
+
+  description: ""
+
+# This is needed, but can be ignored.
+
+modules: []
+
+partials: []
+
+
+
+# Injection of extra stages - for example a manual judgement step
+
+stages:
+
+##################################################################
+
+# STAGE: manual judgement
+
+##################################################################
+
+- id: "Manual Judgment"
+
+  name: Manual Judgment
+
+  type: manualJudgment
+
+  # This is where the stage will go - after jenkins7 (id of stage, found in template) stage.
+
+  inject:
+
+    after:
+
+    - jenkins7
+
+  config:
+
+    failPipeline: true
+
+    judgmentInputs: []
+
+    notifications: []
+
+
+
+##################################################################
+
+# Infrastructure Setup
+
+##################################################################
+
+infrastructure:
+
+  tags:
+
+    product: cd
+
+    service: examples
+
+
+
+##################################################################
+
+# Staging Infrastructure
+
+##################################################################
+
+  environment:
+
+    - environmentName: staging
+
+      cloudProvider: aws
+
+      account: staging
+
+      region: us-west-2
+
+      vpcSubnet: secondary_vpc
+
+      #Security groups
+
+      securityGroup:
+
+      - name: "{{ application }}-{{ environmentName }}-lb"
+
+        protocol: tcp
+
+        inbound: [ "80:0.0.0.0/0" ]
+
+        outbound: [ "4567:{{ application }}-{{ environmentName }}-sg" ]
+
+      - name: "{{ application }}-{{ environmentName }}-sg"
+
+        protocol: tcp
+
+        inbound: [ "4567:{{ application }}-{{ environmentName }}-lb", "22:10.0.0.0/8" ]
+
+        outbound: [ "all:0.0.0.0/0" ]
+
+      # Load balancers
+
+      loadBalancing:
+
+      - name: "{{ application }}-{{ environmentName }}-lb"
+
+        securityGroupNames: [ "{{ application }}-{{ environmentName }}-lb" ]
+
+        isPubliclyAccessible: false
+
+        region: us-west-2
+
+        listeners:
+
+          - loadBalancerPort: 80
+
+            loadBalancerProtocol: http
+
+            instancePort: 4567
+
+            instanceProtocol: http
+
+          - loadBalancerPort: 443
+
+            loadBalancerProtocol: https
+
+            instancePort: 4567
+
+            instanceProtocol: http
+
+            securityPolicy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+
+            # certificateName: "myapp.staging.lkt.is"
+
+        health:
+
+          interval: 30
+
+          # Timeout must be less than interval
+
+          timeout: 29
+
+          healthyThreshold: 3
+
+          unhealthyThreshold: 4
+
+          healthcheckPath: /health
+
+          port: 4567
+
+          protocol: http
+
+      # Example of how to add DNS
+
+      # dns:
+
+      #   - domainName: "myapp.staging.lkt.is"
+
+      #     loadBalancerName: "{{ application }}-{{ environmentName }}-lb"
+
+
+
+
+
+##################################################################
+
+# Production Infrastructure
+
+##################################################################
+
+    - environmentName: production
+
+      cloudProvider: aws
+
+      account: production
+
+      region: us-west-2
+
+      vpcSubnet: production
+
+      #Security groups
+
+      securityGroup:
+
+      - name: "{{ application }}-{{ environmentName }}-lb"
+
+        protocol: tcp
+
+        inbound: [ "80:0.0.0.0/0" ]
+
+        outbound: [ "4567:{{ application }}-{{ environmentName }}-sg" ]
+
+      - name: "{{ application }}-{{ environmentName }}-sg"
+
+        protocol: tcp
+
+        inbound: [ "4567:{{ application }}-{{ environmentName }}-lb", "22:10.0.0.0/8" ]
+
+        outbound: [ "all:0.0.0.0/0" ]
+
+      # Load balancers
+
+      loadBalancing:
+
+      - name: "{{ application }}-{{ environmentName }}-lb"
+
+        securityGroupNames: [ "{{ application }}-{{ environmentName }}-lb" ]
+
+        isPubliclyAccessible: false
+
+        region: us-west-2
+
+        listeners:
+
+          - loadBalancerPort: 80
+
+            loadBalancerProtocol: http
+
+            instancePort: 4567
+
+            instanceProtocol: http
+
+          - loadBalancerPort: 443
+
+            loadBalancerProtocol: https
+
+            instancePort: 4567
+
+            instanceProtocol: http
+
+            securityPolicy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+
+            # certificateName: "myapp.staging.lkt.is"
+
+        health:
+
+          interval: 30
+
+          # Timeout must be less than interval
+
+          timeout: 29
+
+          healthyThreshold: 3
+
+          unhealthyThreshold: 4
+
+          healthcheckPath: /health
+
+          port: 4567
+
+          protocol: http
+
+      # Example of how to add DNS
+
+      # dns:
+
+      #  - domainName: "myapp.prod.lkt.is"
+
+      #    loadBalancerName: "{{ application }}-{{ environmentName }}-lb"
+		 
+No description provided.
+
+
+
+hari-krishna added some commits 4 days ago
+
+
+Create load-balancer.yaml
+
+
+da89bf9
+
+
+Update load-balancer.yaml
+
+
+a278284
+
+
+bruno-carrier reviewed 2 days ago
+View changes
+
+load-balancer.yaml
+
+
+@@ -0,0 +1,82 @@
+
+
++infrastructure:
+   
+
+bruno-carrier 2 days ago Owner
+Please read to find out where to place this file in the repository: https://source.corp.lookout.com/pages/continuous-delivery/documents/declarative/pipelines/
+
+
+
+Reply…
+Hide outdated
+load-balancer.yaml
+
+
++      securityGroup:
+
+
++      - name: "{{ artifactory }}-{{ staging }}-lb"
+
+
++        protocol: tcp
+
+
++        inbound: [ "8081:0.0.0.0/0" ]
+   
+
+bruno-carrier 2 days ago Owner
+it should be inbound 443 / 80
+
+
+
+Reply…
+Hide outdated
+load-balancer.yaml
+
+
++      - name: "{{ artifactory }}-{{ staging }}-lb"
+
+
++        protocol: tcp
+
+
++        inbound: [ "8081:0.0.0.0/0" ]
+
+
++        outbound: [ "80:{{ artifactory }}-{{ staging }}-sg" ]
+   
+
+bruno-carrier 2 days ago Owner
+outbound should hit the Nginx container, which I think is on port 80
+
+
+
+Reply…
+Hide outdated
+load-balancer.yaml
+
+
++        protocol: tcp
+
+
++        inbound: [ "8081:{{ artifactory }}-{{ staging }}-lb", "22:10.0.0.0/8" ]
+
+
++        outbound: [ "all:0.0.0.0/0" ]
+
+
++      loadBalancing:loadBalancing:
+   
+
+bruno-carrier 2 days ago Owner
+this line has a typo
+
+
+
+Reply…
+Hide outdated
+load-balancer.yaml
+
+
++        securityGroupNames: [ "{{ artifactory }}-{{ staging }}-lb" ]
+
+
++        isPubliclyAccessible: false
+
+
++        region: us-west-2
+
+
++        listeners:
+   
+
+bruno-carrier 2 days ago Owner
+There should be a listener for port 80 as well
+port 443 should have an IAM/ACM certificate
+
+
+
+Reply…
+load-balancer.yaml
+
+
++            instanceProtocol: http
+
+
++            securityPolicy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+
+
++        health:
+
+
++          interval: 30
+   
+
+bruno-carrier 2 days ago Owner
+why interval 30?
+
+
+
+Reply…
+
+
+Update load-balancer.yaml
+
+
+167d6b4
+
+Merge state
+
+
